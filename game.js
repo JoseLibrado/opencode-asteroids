@@ -188,7 +188,9 @@ class Ship {
     this.vx     = 0;
     this.vy     = 0;
     this.radius = 12;
-    this.thrusting     = false;
+    this.nose       = 21;
+    this.multiplier = 1;
+    this.thrusting  = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.boostTimer    = 0;
@@ -224,9 +226,8 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
-    const ox = this.x + Math.cos(this.angle) * NOSE;
-    const oy = this.y + Math.sin(this.angle) * NOSE;
+    const ox = this.x + Math.cos(this.angle) * this.nose;
+    const oy = this.y + Math.sin(this.angle) * this.nose;
     return [new Bullet(ox, oy, this.angle)];
   }
 
@@ -258,6 +259,52 @@ class Ship {
       ctx.lineTo(-8 - rand(6, 14), 0);
       ctx.lineTo(-8,  4);
       ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+// ── Nave morada (el doble de puntos) ──────────────────────────────────────────
+class PurpleShip extends Ship {
+  constructor() { super(); }
+
+  reset() {
+    super.reset();
+    this.radius     = 24;   // el doble de la original (12)
+    this.nose       = 42;
+    this.multiplier = 2;
+  }
+
+  draw() {
+    if (this.dead) return;
+    // Parpadeo durante invencibilidad de reaparición
+    if (this.invincible > 0 && Math.floor(this.invincible * 8) % 2 === 0) return;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.strokeStyle = this.boostTimer > 0 ? '#d98cff' : '#a855f7';
+    ctx.lineWidth   = 1.5;
+    ctx.lineJoin    = 'round';
+
+    // Silueta clásica al doble de tamaño
+    ctx.beginPath();
+    ctx.moveTo( 40,  0);   // nariz
+    ctx.lineTo(-24, -18);  // ala izquierda
+    ctx.lineTo(-14,  0);   // muesca trasera
+    ctx.lineTo(-24, 18);   // ala derecha
+    ctx.closePath();
+    ctx.stroke();
+
+    // Llama del propulsor
+    if (this.thrusting && Math.random() > 0.35) {
+      ctx.beginPath();
+      ctx.moveTo(-16, -8);
+      ctx.lineTo(-16 - rand(12, 28), 0);
+      ctx.lineTo(-16, 8);
+      ctx.strokeStyle = 'rgba(216, 130, 255, 0.85)';
       ctx.stroke();
     }
 
@@ -347,6 +394,17 @@ let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
 let deadTimer;
 let shootingStarTimer;
+let shipType = 'classic';   // 'classic' | 'purple'
+
+function createShip() {
+  return shipType === 'purple' ? new PurpleShip() : new Ship();
+}
+
+function selectShip(type) {
+  if (type === shipType) return;
+  shipType = type;
+  if (state !== 'gameover') ship = createShip();
+}
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -373,7 +431,7 @@ function spawnShootingStar() {
 }
 
 function initGame() {
-  ship          = new Ship();
+  ship          = createShip();
   bullets   = [];
   asteroids = [];
   particles = [];
@@ -417,6 +475,9 @@ function killShip() {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  if (pressed('Digit1')) selectShip('classic');
+  if (pressed('Digit2')) selectShip('purple');
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
     particles.forEach(p => p.update(dt));
@@ -468,7 +529,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * ship.multiplier;
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
         if (Math.random() < DROP_CHANCE)
@@ -485,7 +546,7 @@ function update(dt) {
       if (!s.dead && !b.dead && dist(b, s) < s.radius) {
         b.dead = true;
         s.dead = true;
-        score += SHOOTING_STAR_SCORE;
+        score += SHOOTING_STAR_SCORE * ship.multiplier;
         explode(s.x, s.y, 10);
       }
     }
@@ -551,6 +612,10 @@ function drawHUD() {
   ctx.textAlign = 'left';
   ctx.fillText(`SCORE  ${score}`, 14, 26);
 
+  ctx.font = '13px monospace';
+  ctx.fillStyle = ship.multiplier > 1 ? '#a855f7' : 'rgba(255,255,255,0.6)';
+  ctx.fillText(ship.multiplier > 1 ? 'NAVE MORADA x2' : 'NAVE CLÁSICA', 14, 44);
+
   ctx.textAlign = 'center';
   ctx.fillText(`NIVEL ${level}`, W / 2, 26);
 
@@ -588,7 +653,7 @@ function draw() {
   drawHUD();
 
   if (state === 'gameover')
-    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO PARA REINICIAR`);
+    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   TECLA 1: NAVE CLÁSICA / 2: MORADA x2   —   ESPACIO PARA REINICIAR`);
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────────
