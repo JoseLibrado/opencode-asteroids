@@ -1,0 +1,183 @@
+name: issue-triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install opencode CLI
+        run: npm install --global opencode-ai
+
+      - name: Etiquetar y añadir resumen al issue
+        uses: actions/github-script@v7
+        timeout-minutes: 10
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        with:
+          script: |
+            const { spawnSync } = require('node:child_process')
+
+            const MODEL = 'opencode/big-pickle'
+            const MARKER = '<!-- opencode-triage -->'
+            const { owner, repo } = context.repo
+            const issue = context.payload.issue
+            const issue_number = issue.number
+
+            const LABEL_RULES = [
+              {
+                name: 'bug', color: 'd73a4a',
+                keywords: ['bug', 'error', 'falla', 'no funciona', 'no carga', 'crash', 'se rompe', 'roto', 'se traba', 'se congela', 'no responde', 'pantalla negra', 'no aparece'],
+              },
+              {
+                name: 'enhancement', color: 'a2eeef',
+                keywords: ['mejora', 'agregar', 'añadir', 'nueva función', 'nueva funcion', 'nueva feature', 'feature', 'implementar', 'propongo', 'propuesta', 'me gustaría', 'me gustaria', 'soporte para', 'sería bueno'],
+              },
+              {
+                name: 'power-up', color: '5319e7',
+                keywords: ['power-up', 'powerup', 'doble puntos', 'doble puntaje', 'invencibilidad', 'invulnerabilidad', 'escudo', 'shield', 'magnet', 'imán', 'iman', 'propulsión', 'propulsion', 'boost', 'velocidad', 'nave morada', 'purple'],
+              },
+              {
+                name: 'nave', color: '0e8a16',
+                keywords: ['nave', 'ship', 'spaceship', 'enemigo'],
+              },
+              {
+                name: 'gameplay', color: 'fbca04',
+                keywords: ['asteroide', 'estrella fugaz', 'shooting star', 'colisión', 'colision', 'spawn', 'aparición', 'dificultad', 'nivel', 'level', 'mundo'],
+              },
+              {
+                name: 'graficos', color: 'fef2c0',
+                keywords: ['canvas', 'render', 'gráficos', 'graficos', 'dibujo', 'sprite', 'color', 'animación', 'animacion', 'píxel', 'pixel', 'pixeles', 'gráfica', 'grafica', 'visual'],
+              },
+              {
+                name: 'puntaje', color: '1d76db',
+                keywords: ['puntaje', 'score', 'puntos', 'puntuación', 'puntuacion', 'marcador', 'records'],
+              },
+              {
+                name: 'controles', color: 'f9d0c4',
+                keywords: ['teclado', 'controles', 'control', 'tecla', 'flecha', 'arrow', 'espacio', 'space', 'input', 'key'],
+              },
+              {
+                name: 'documentacion', color: 'd4c5f9',
+                keywords: ['documentación', 'documentacion', 'readme', 'docs', 'documento', 'agente', 'workflow'],
+              },
+              {
+                name: 'pregunta', color: 'c2e0c6',
+                keywords: ['¿cómo', 'como funciona', 'como hacer', 'ayuda', 'alguna idea', 'pregunta', 'cómo'],
+              },
+            ]
+
+            function computeLabels(title, body) {
+              const text = `${title || ''}\n${body || ''}`.toLowerCase()
+              return LABEL_RULES.filter((rule) => rule.keywords.some((k) => text.includes(k))).map((r) => r.name)
+            }
+
+            async function ensureLabels(labels) {
+              const existing = new Set()
+              let page = 1
+              for (;;) {
+                const pageLabels = await github.rest.issues.listLabelsForRepo({ owner, repo, per_page: 100, page })
+                if (!pageLabels.data.length) break
+                pageLabels.data.forEach((l) => existing.add(l.name))
+                page += 1
+              }
+              for (const name of labels) {
+                if (existing.has(name)) continue
+                const rule = LABEL_RULES.find((r) => r.name === name)
+                await github.rest.issues.createLabel({ owner, repo, name, color: rule.color })
+              }
+            }
+
+            function buildPrompt() {
+              return [
+                'Eres el bot de triage de un repositorio que implementa un clon del juego Asteroids en HTML5 canvas puro (un único archivo game.js, sin dependencias ni bundler).',
+                '',
+                'Tienes acceso al repositorio: léelo si necesitas contexto (AGENTS.md y game.js).',
+                '',
+                'Analiza el siguiente issue recién creado y devuelve TAN SOLO un bloque en Markdown con un resumen útil para quien vaya a resolverlo en español. El resumen debe tener estas secciones (en este orden):',
+                '- **Categoría:** bug, mejora, nueva función, power-up, pregunta, u otra.',
+                '- **Resumen:** 2-3 frases que describan qué pide el autor.',
+                '- **Archivos potencialmente afectados:** lista los archivos y, si es posible, líneas o zonas concretas de game.js o index.html relacionadas con el pedido (p. ej. game.js:120). Si no lo sabes, indica los candidatos probables.',
+                '- **Esfuerzo estimado:** bajo, medio o alto, con una línea de justificación.',
+                '- **Primer paso sugerido:** la acción más razonable para empezar a resolverlo.',
+                '',
+                'Reglas:',
+                '- Devuelve ÚNICAMENTE el bloque Markdown, sin texto adicional antes ni después.',
+                '- No uses emojis.',
+                '- Todo en español.',
+                '- Encierra el bloque, y solo el bloque, entre las líneas literales <<<RESUMEN>>> y <<<FIN>>>.',
+                '',
+                'Issue:',
+                `Título: ${issue.title}`,
+                `Autor: ${issue.user.login}`,
+                `Labels asignados: ${labels.join(', ') || 'ninguno'}`,
+                'Body:',
+                `${issue.body || '(sin cuerpo)'}`,
+              ].join('\n')
+            }
+
+            function extractSummary(stdout) {
+              const match = stdout.match(/<<<RESUMEN>>>([\s\S]*?)<<<FIN>>>/)
+              const block = match ? match[1] : stdout
+              const noAnsi = block.replace(/\u001b\[[0-9;]*m/g, '').trim()
+              if (!noAnsi) throw new Error('opencode no devolvió ningún resumen')
+              return noAnsi
+            }
+
+            function runOpencode() {
+              const res = spawnSync('opencode', ['run', '--model', MODEL, '--auto', buildPrompt()], {
+                cwd: process.env.GITHUB_WORKSPACE || process.cwd(),
+                env: { ...process.env, OPENCODE_API_KEY: process.env.OPENCODE_API_KEY },
+                encoding: 'utf8',
+                timeout: 9 * 60 * 1000,
+                maxBuffer: 20 * 1024 * 1024,
+              })
+              if (res.error) throw res.error
+              if (res.status !== 0) {
+                throw new Error(`opencode falló (exit ${res.status}):\n${res.stdout}\n${res.stderr}`)
+              }
+              return extractSummary(res.stdout)
+            }
+
+            const labels = computeLabels(issue.title, issue.body)
+            if (labels.length) {
+              await ensureLabels(labels)
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels })
+              core.info(`Labels asignados: ${labels.join(', ')}`)
+            } else {
+              core.info('Sin labels que asignar')
+            }
+
+            const originalBody = issue.body || ''
+            if (originalBody.includes(MARKER)) {
+              core.info('El issue ya fue procesado, se omite el resumen')
+              return
+            }
+
+            if (!process.env.OPENCODE_API_KEY) {
+              core.warning('OPENCODE_API_KEY ausente: no se genera resumen')
+              return
+            }
+
+            const summary = runOpencode()
+            core.info(`Resumen generado (${summary.length} caracteres)`)
+
+            const block = `\n\n---\n\n## Resumen de triage (generado por opencode)\n\n${summary}\n\n---\n\n${MARKER} Triage automático al abrir el issue. El texto original del autor no se modificó.`
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number,
+              body: originalBody + block,
+            })
+            core.info('Body actualizado con el resumen')

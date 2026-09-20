@@ -16,6 +16,11 @@ Open `index.html` directly in a browser, or serve locally with `npx serve .`. Th
 - Input uses `e.code` (keyboard-layout independent). `pressed(code)` is edge-triggered and clears the flag on read — call it at most once per frame per code.
 - Asteroid sizes 1–3 index parallel arrays `RADII`/`SPEEDS`/`POINTS` (index 0 is a dummy).
 
+## GitHub Actions
+
+- `.github/workflows/opencode.yml` — ejecuta opencode cuando un comentario menciona `/oc` o `/opencode`.
+- `.github/workflows/issue-triage.yml` — al crear un issue: asigna labels por palabras clave y pega al final del body un resumen generado con opencode, dejando el texto original del autor intacto (marca HTML `<!-- opencode-triage -->`). Toda la configuración vive dentro del propio workflow.
+
 ## Conventions
 
 - All user-facing text is Spanish (`NIVEL`, `PUNTAJE`, `ESPACIO PARA REINICIAR`); keep new UI strings in Spanish.
