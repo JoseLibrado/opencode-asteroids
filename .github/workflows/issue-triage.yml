@@ -42,7 +42,7 @@ jobs:
               },
               {
                 name: 'enhancement', color: 'a2eeef',
-                keywords: ['mejora', 'agregar', 'añadir', 'nueva función', 'nueva funcion', 'nueva feature', 'feature', 'implementar', 'propongo', 'propuesta', 'me gustaría', 'me gustaria', 'soporte para', 'sería bueno'],
+                keywords: ['mejora', 'agregar', 'añadir', 'nueva función', 'nueva funcion', 'nueva feature', 'feature', 'implementar', 'propongo', 'propuesta', 'me gustaría', 'me gustaria', 'soporte para', 'sería bueno', 'incrementar', 'duplicar', 'triplicar', 'tamaño', 'tamano', 'ampliar', 'agrandar', 'escalar', 'aumentar', 'pantalla', 'screen', 'resolución', 'resolucion', 'más grande', 'mas grande', 'grande', 'ancho', 'alto'],
               },
               {
                 name: 'power-up', color: '5319e7',
